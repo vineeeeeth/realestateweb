@@ -135,49 +135,6 @@ npm run dev
 
 The app seeds 5 sample leads automatically on first open.
 
----
-
-## Vercel Deployment (Step by Step)
-
-### Option A — Deploy via Vercel CLI
-
-```bash
-# Install Vercel CLI globally (once)
-npm install -g vercel
-
-# Inside the leadpilot directory
-vercel
-
-# Follow the prompts:
-# - Link to your Vercel account
-# - Set project name: leadpilot
-# - Auto-detected framework: Next.js (confirm)
-# - Build command: npm run build (default)
-# - Output directory: .next (default)
-```
-
-After first deploy, add the environment variable:
-```bash
-vercel env add GEMINI_API_KEY
-# Paste your key when prompted
-# Redeploy
-vercel --prod
-```
-
-### Option B — Deploy via Vercel Dashboard (no CLI)
-
-1. Push this project to a **GitHub** repository
-2. Go to [vercel.com](https://vercel.com) → **Add New Project**
-3. Import your GitHub repository
-4. Vercel auto-detects Next.js — click **Deploy**
-5. After first deploy fails (missing key), go to **Project Settings → Environment Variables**
-6. Add: `GEMINI_API_KEY` = your key (Environment: Production + Preview)
-7. Go to **Deployments → Redeploy**
-
-The app will be live at `https://your-project.vercel.app`.
-
----
-
 ## Key Technical Decisions
 
 | Decision | Rationale |
