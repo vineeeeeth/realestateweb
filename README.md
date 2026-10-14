@@ -1,36 +1,225 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ✈️ LeadPilot — AI Real Estate Lead Manager
 
-## Getting Started
+> **AI-powered lead scoring, prioritisation, call prep, and follow-up drafting for real-estate salespersons.**
+> Built with Next.js 16 (App Router) + Tailwind CSS v4 + Google Gemini.
 
-First, run the development server:
+---
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## What It Does
+
+LeadPilot transforms the overwhelming inbox of a busy real-estate salesperson into a triage system they can scan in seconds:
+
+| Feature | What it does |
+|---|---|
+| **Lead Intake Form** | Capture name, location, property requirement, budget, timeline, and customer message |
+| **AI Analysis** | Scores 0–100, assigns hot/warm/cold priority, extracts key requirements, objections, next action, and a ready-to-send suggested response |
+| **Lead List** | All leads sorted by score. Filter by priority. Coloured cards scannable in seconds |
+| **AI Chat** | Per-lead sales coach locked to that lead's context — ask "what should I emphasise?" or "make my reply more assertive" |
+| **Call Prep Brief** | One-page brief: opening line, numbered talking points, objection/answer pairs |
+| **Post-Call Update** | Enter call notes → AI re-scores the lead, updates priority, and drafts a WhatsApp follow-up |
+
+---
+
+## Architecture Overview
+
+```
+leadpilot/
+├── app/
+│   ├── layout.tsx              # Root layout + global nav bar
+│   ├── page.tsx                # Lead list (home) — client component
+│   ├── new/
+│   │   └── page.tsx            # New lead form page
+│   ├── leads/[id]/
+│   │   └── page.tsx            # Lead detail page (4 tabs)
+│   └── api/
+│       ├── analyse/route.ts    # POST — analyse a new lead
+│       ├── chat/route.ts       # POST — per-lead AI chat
+│       ├── call-prep/route.ts  # POST — generate call brief
+│       └── post-call/route.ts  # POST — post-call re-score + WhatsApp
+│
+├── components/
+│   ├── LeadCard.tsx            # Card on the list view
+│   ├── LeadForm.tsx            # Intake form with validation + loading state
+│   ├── ChatPanel.tsx           # AI chat UI (suggestions, history, typing indicator)
+│   ├── CallPrepPanel.tsx       # Call prep brief display
+│   ├── PostCallPanel.tsx       # Post-call notes + results
+│   ├── PriorityBadge.tsx       # Red/orange/blue badge
+│   ├── ScoreRing.tsx           # SVG circular score indicator
+│   └── CopyButton.tsx          # One-click clipboard copy
+│
+└── lib/
+    ├── ai.ts                   # ALL Gemini API calls (one file)
+    ├── types.ts                # All TypeScript types
+    ├── storage.ts              # localStorage read/write helpers
+    └── seeds.ts                # 5 pre-built sample leads
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Data Flow
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+Browser (client component)
+  └─► fetch("/api/analyse")          ← POST with form data
+         └─► lib/ai.ts               ← Gemini API call (server only)
+                └─► JSON response
+  └─► localStorage                   ← persist Lead object
+  └─► UI re-renders
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Why this separation matters:** The Gemini API key lives exclusively in `.env.local` and is only accessed in `lib/ai.ts`, which is imported only by server-side API routes. Zero risk of key exposure to the browser.
 
-## Learn More
+---
 
-To learn more about Next.js, take a look at the following resources:
+## AI Model & How It's Called
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Item | Detail |
+|---|---|
+| **Model** | `gemini-3.5-flash-lite` (default, configurable via `GEMINI_MODEL`) |
+| **SDK** | `@google/generative-ai` v0.24 |
+| **JSON Mode** | `responseMimeType: "application/json"` + `responseSchema` in `generationConfig` |
+| **Retry** | Each call retries once on bad/invalid JSON before throwing |
+| **Chat** | Uses `model.startChat()` with `history` for per-lead context |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Scoring Rubric (embedded in system prompt)
 
-## Deploy on Vercel
+| Signal | Points |
+|---|---|
+| Clear, realistic budget | +20 |
+| Short timeline (< 3 months) | +20 |
+| Specific location named | +20 |
+| Specific property type/size | +20 |
+| Engaged, detailed message | +20 |
+| Vague / "just browsing" | -15 |
+| No budget given | -10 |
+| Long timeline or none | -10 |
+| Very broad location | -10 |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+**Score → Priority:** ≥70 = hot 🔥, 40–69 = warm 🟠, <40 = cold 🔵
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## Storage
+
+**localStorage** — zero config, zero cost, zero database required.
+
+All leads are serialised as JSON in a single `leadpilot_leads` key. The `lib/storage.ts` file provides typed `getLeads()`, `getLeadById()`, `saveLead()`, `updateLead()`, `clearLeads()`, and `seedIfEmpty()` helpers. Switching to Supabase or SQLite later only requires changing `lib/storage.ts`.
+
+---
+
+## How to Run Locally
+
+### Prerequisites
+- Node.js 20+
+- A free [Gemini API key](https://aistudio.google.com/app/apikey)
+
+### Steps
+
+```bash
+# 1. Clone / navigate to the project
+cd leadpilot
+
+# 2. Install dependencies
+npm install
+
+# 3. Set up environment variables
+cp .env.example .env.local
+# Edit .env.local and set:
+# GEMINI_API_KEY=your_key_here
+# GEMINI_MODEL=gemini-3.5-flash-lite (optional, defaults to gemini-3.5-flash-lite)
+
+# 4. Start the development server
+npm run dev
+
+# 5. Open the app
+# http://localhost:3000 (or http://localhost:3001 if port 3000 is occupied)
+```
+
+The app seeds 5 sample leads automatically on first open.
+
+---
+
+## Vercel Deployment (Step by Step)
+
+### Option A — Deploy via Vercel CLI
+
+```bash
+# Install Vercel CLI globally (once)
+npm install -g vercel
+
+# Inside the leadpilot directory
+vercel
+
+# Follow the prompts:
+# - Link to your Vercel account
+# - Set project name: leadpilot
+# - Auto-detected framework: Next.js (confirm)
+# - Build command: npm run build (default)
+# - Output directory: .next (default)
+```
+
+After first deploy, add the environment variable:
+```bash
+vercel env add GEMINI_API_KEY
+# Paste your key when prompted
+# Redeploy
+vercel --prod
+```
+
+### Option B — Deploy via Vercel Dashboard (no CLI)
+
+1. Push this project to a **GitHub** repository
+2. Go to [vercel.com](https://vercel.com) → **Add New Project**
+3. Import your GitHub repository
+4. Vercel auto-detects Next.js — click **Deploy**
+5. After first deploy fails (missing key), go to **Project Settings → Environment Variables**
+6. Add: `GEMINI_API_KEY` = your key (Environment: Production + Preview)
+7. Go to **Deployments → Redeploy**
+
+The app will be live at `https://your-project.vercel.app`.
+
+---
+
+## Key Technical Decisions
+
+| Decision | Rationale |
+|---|---|
+| **All AI in `lib/ai.ts`** | Single source of truth. Swap models, tune prompts, add logging in one place |
+| **localStorage for storage** | Zero infrastructure, instant setup, works offline. Typed helpers make it easy to migrate |
+| **JSON mode + schema** | Guarantees structured output. Retry-once pattern handles the rare malformed response |
+| **Server-side API routes** | API key never reaches the browser. All Gemini calls go through Next.js edge-compatible routes |
+| **Seed leads** | App is populated on first visit — no waiting for API calls to see the UI |
+| **4-tab detail view** | Keeps each feature focused; avoids wall-of-text on a single page |
+| **Score ring SVG** | Pure SVG, no external charting library, zero bundle overhead |
+
+---
+
+## Known Limitations
+
+- **localStorage is device-local** — leads don't sync across browsers/devices. Use Supabase for multi-device.
+- **No authentication** — anyone who opens the URL can see leads. Add NextAuth or Clerk for production.
+- **Gemini free tier rate limits** — analysing many leads simultaneously may hit quota (60 RPM on free tier). Add request queuing for high volume.
+- **No image/document upload** — property brochures must be described in text.
+- **No email/WhatsApp integration** — the suggested response and WhatsApp draft must be copy-pasted manually.
+
+---
+
+## Adding Real Database Storage (Supabase)
+
+Replace `lib/storage.ts` with Supabase client calls:
+
+```bash
+npm install @supabase/supabase-js
+```
+
+```ts
+// lib/storage.ts (Supabase version)
+import { createClient } from '@supabase/supabase-js'
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!)
+
+export async function getLeads(): Promise<Lead[]> {
+  const { data } = await supabase.from('leads').select('*').order('score', { ascending: false })
+  return data ?? []
+}
+// ... etc
+```
+
+Create a `leads` table in Supabase with columns matching the `Lead` interface.

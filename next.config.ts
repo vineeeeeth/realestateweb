@@ -1,17 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
-      },
-    },
-  },
+  // App Router is on by default in Next.js 13+
+  // Suppress the Pages Router warning we don't need
+  reactStrictMode: true,
 };
 
 export default nextConfig;
